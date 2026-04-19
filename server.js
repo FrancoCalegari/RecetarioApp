@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import fetch from 'node-fetch';
+import nodemailer from 'nodemailer';
+import crypto from 'crypto';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -20,8 +22,54 @@ const {
   SPIDER_API_URL,
   JWT_SECRET = 'recetario_jwt_secret_2025',
   GEMINI_API_KEY,
+  EMAIL_USER,
+  EMAIL_PASS,
   PORT = 3000,
 } = process.env;
+
+// ─── Email Transporter (Nodemailer + Gmail) ───────────────────────
+const emailTransporter = (EMAIL_USER && EMAIL_PASS)
+  ? nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+    })
+  : null;
+
+// ─── Detect base URL from request (localhost vs production) ──────
+function getBaseUrl(req) {
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`;
+  return `${protocol}://${host}`;
+}
+
+// ─── Send password reset email ───────────────────────────────────
+async function sendResetEmail(to, username, resetLink) {
+  if (!emailTransporter) throw new Error('Servicio de email no configurado. Agregá EMAIL_USER y EMAIL_PASS al .env');
+
+  await emailTransporter.sendMail({
+    from: `"Recetario 🍳" <${EMAIL_USER}>`,
+    to,
+    subject: '🔑 Recuperá tu contraseña — Recetario',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #0F1419; color: #E8EAF0; border-radius: 12px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #E8734A, #4CAF7D); padding: 32px; text-align: center;">
+          <div style="font-size: 48px;">🍳</div>
+          <h1 style="color: white; margin: 8px 0; font-size: 24px;">Recetario</h1>
+        </div>
+        <div style="padding: 32px;">
+          <h2 style="color: #E8EAF0; margin-top: 0;">Hola, ${username} 👋</h2>
+          <p style="color: #A0A8B8; line-height: 1.6;">Recibimos una solicitud para restablecer la contraseña de tu cuenta en Recetario.</p>
+          <p style="color: #A0A8B8; line-height: 1.6;">Hacé click en el botón para crear una nueva contraseña. El link es válido por <strong style="color: #E8EAF0;">1 hora</strong>.</p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${resetLink}" style="background: linear-gradient(135deg, #E8734A, #cf6540); color: white; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">Restablecer contraseña</a>
+          </div>
+          <p style="color: #606880; font-size: 13px; line-height: 1.6;">Si no solicitaste esto, podés ignorar este email. Tu contraseña no cambiará.</p>
+          <p style="color: #606880; font-size: 12px; margin-top: 24px; border-top: 1px solid #1E2832; padding-top: 16px;">O copiá este link en tu navegador:<br><a href="${resetLink}" style="color: #4CAF7D; word-break: break-all;">${resetLink}</a></p>
+        </div>
+      </div>
+    `,
+  });
+}
 
 // ID fijo del usuario Receti (se crea en migrate)
 const RECETI_USERNAME = 'receti';
@@ -330,13 +378,16 @@ app.post('/api/db/init', async (_req, res) => {
 // ─── DB Migrate: Users & Ratings ────────────────────────────────────
 app.post('/api/db/migrate', async (_req, res) => {
   const migrations = [
-    // New tables
+    // Core tables
     `CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTO_INCREMENT, username VARCHAR(50) NOT NULL, email VARCHAR(255) NOT NULL, password_hash VARCHAR(255) NOT NULL, avatar_file_id INT, bio TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`,
     `CREATE TABLE IF NOT EXISTS puntajes_recetas (id INTEGER PRIMARY KEY AUTO_INCREMENT, receta_id INT NOT NULL, usuario_id INT NOT NULL, puntaje INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`,
     `CREATE TABLE IF NOT EXISTS puntajes_ingredientes (id INTEGER PRIMARY KEY AUTO_INCREMENT, ingrediente_id INT NOT NULL, usuario_id INT NOT NULL, puntaje INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`,
+    // Password reset tokens
+    `CREATE TABLE IF NOT EXISTS password_reset_tokens (id INTEGER PRIMARY KEY AUTO_INCREMENT, usuario_id INT NOT NULL, token VARCHAR(255) NOT NULL UNIQUE, expires_at TIMESTAMP NOT NULL, used BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`,
     // Add columns to recetas (ignore error if already exists)
     `ALTER TABLE recetas ADD COLUMN autor_id INT`,
     `ALTER TABLE recetas ADD COLUMN privacidad VARCHAR(20) DEFAULT 'privado'`,
+    `ALTER TABLE recetas ADD COLUMN generado_ia BOOLEAN DEFAULT FALSE`,
     // Add columns to ingredientes
     `ALTER TABLE ingredientes ADD COLUMN descripcion TEXT`,
     `ALTER TABLE ingredientes ADD COLUMN foto_file_id INT`,
@@ -370,8 +421,89 @@ app.post('/api/db/migrate', async (_req, res) => {
   res.json({ success: true, message: 'Migración completada', results });
 });
 
-// ─── AI: Generate Recipe with Gemini ─────────────────────────────────
-app.post('/api/ai/generate-recipe', async (req, res) => {
+// ─── AUTH: Forgot Password ────────────────────────────────────────
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'El email es requerido' });
+
+  try {
+    // Always respond with success to avoid user enumeration
+    const users = await sqlSelect(`SELECT id, username, email FROM usuarios WHERE email = ${esc(email)}`);
+    if (users.length === 0) {
+      return res.json({ success: true, message: 'Si el email existe, recibirás un correo con instrucciones.' });
+    }
+
+    const user = users[0];
+
+    // Invalidate any existing tokens for this user
+    await sqlQuery(`UPDATE password_reset_tokens SET used = TRUE WHERE usuario_id = ${user.id} AND used = FALSE`)
+      .catch(() => {}); // Ignore if table doesn't exist yet
+
+    // Generate secure token
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const expiresAtSQL = expiresAt.toISOString().slice(0, 19).replace('T', ' ');
+
+    await sqlQuery(
+      `INSERT INTO password_reset_tokens (usuario_id, token, expires_at) VALUES (${user.id}, ${esc(token)}, ${esc(expiresAtSQL)})`
+    );
+
+    // Build reset link using the request's actual host/protocol
+    const baseUrl = getBaseUrl(req);
+    const resetLink = `${baseUrl}/#/reset-password?token=${token}`;
+
+    await sendResetEmail(user.email, user.username, resetLink);
+
+    console.log(`[Auth] Reset email sent to ${user.email} | Link: ${resetLink}`);
+    res.json({ success: true, message: 'Si el email existe, recibirás un correo con instrucciones.' });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ error: err.message || 'Error al enviar el correo de recuperación' });
+  }
+});
+
+// ─── AUTH: Reset Password ─────────────────────────────────────────
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword) return res.status(400).json({ error: 'Token y nueva contraseña son requeridos' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+
+  try {
+    // Find valid token
+    const tokens = await sqlSelect(
+      `SELECT prt.*, u.id as uid, u.username, u.email
+       FROM password_reset_tokens prt
+       JOIN usuarios u ON u.id = prt.usuario_id
+       WHERE prt.token = ${esc(token)}
+         AND prt.used = FALSE
+         AND prt.expires_at > NOW()`
+    );
+
+    if (tokens.length === 0) {
+      return res.status(400).json({ error: 'El link de recuperación es inválido o ya expiró. Solicitá uno nuevo.' });
+    }
+
+    const resetEntry = tokens[0];
+
+    // Hash new password
+    const hash = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    await sqlQuery(`UPDATE usuarios SET password_hash = ${esc(hash)} WHERE id = ${resetEntry.uid}`);
+
+    // Mark token as used
+    await sqlQuery(`UPDATE password_reset_tokens SET used = TRUE WHERE id = ${resetEntry.id}`);
+
+    console.log(`[Auth] Password reset successful for user: ${resetEntry.username}`);
+    res.json({ success: true, message: '¡Contraseña actualizada! Ya podés iniciar sesión.' });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ error: 'Error al restablecer la contraseña' });
+  }
+});
+
+// ─── AI: Generate Recipe with Gemini (stateless — only queries Gemini, no DB writes)
+app.post('/api/ai/generate-recipe', authenticateToken, async (req, res) => {
   if (!GEMINI_API_KEY || GEMINI_API_KEY === 'TU_API_KEY_AQUI') {
     return res.status(503).json({ error: 'API key de Gemini no configurada. Agregá GEMINI_API_KEY al archivo .env' });
   }
@@ -429,76 +561,9 @@ NO incluyas texto adicional fuera del JSON.`;
       return res.status(502).json({ error: 'Gemini devolvió JSON inválido', raw: rawText });
     }
 
-    // Get Receti user ID
-    const recitiUsers = await sqlSelect(`SELECT id FROM usuarios WHERE username = 'receti'`);
-    const recitiId = recitiUsers?.[0]?.id;
-    if (!recitiId) return res.status(500).json({ error: 'Usuario Receti no encontrado. Ejecutá /api/db/migrate primero.' });
-
-    // Insert ingredients
-    const ingredienteIds = [];
-    for (const ing of (recipeData.ingredientes || [])) {
-      try {
-        let existing = await sqlSelect(`SELECT id FROM ingredientes WHERE nombre = ${esc(ing.nombre)}`);
-        let ingId;
-        if (existing.length > 0) {
-          ingId = existing[0].id;
-        } else {
-          const r = await sqlQuery(`INSERT INTO ingredientes (nombre, categoria, autor_id, privacidad) VALUES (${esc(ing.nombre)}, ${esc(ing.categoria || 'otros')}, ${recitiId}, 'publico')`);
-          ingId = r?.result?.insertId;
-        }
-        if (ingId) ingredienteIds.push({ id: ingId, cantidad: ing.cantidad, unidad: ing.unidad, nombre: ing.nombre });
-      } catch (e) { console.warn('Ingredient insert error:', e.message); }
-    }
-
-    // Generar imagen con IA (Pollinations AI como alternativa libre)
-    let imagenFileId = 'NULL';
-    try {
-      const imgPrompt = `Delicious professional food photography of ${recipeData.nombre}. High quality, cinematic lighting, 4k.`;
-      const imgRes = await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(imgPrompt)}?nologo=true&width=800&height=600`);
-      
-      if (imgRes.ok) {
-        // Upload to Spider-API storage directly
-        const { FormData, Blob } = await import('node-fetch');
-        const imgBuffer = await imgRes.arrayBuffer();
-        const formData = new FormData();
-        const blob = new Blob([imgBuffer], { type: 'image/jpeg' });
-        formData.append('archivo', blob, { filename: 'ai-recipe.jpg', contentType: 'image/jpeg' });
-
-        const uploadRes = await fetch(`${SPIDER_API_URL}/storage/upload`, {
-          method: 'POST',
-          headers: { 'X-API-KEY': SPIDER_API_KEY },
-          body: formData
-        });
-        
-        const uploadData = await uploadRes.json();
-        if (uploadData.success && uploadData.file?.id) {
-          imagenFileId = uploadData.file.id;
-        }
-      }
-    } catch (err) {
-      console.warn('Error generando o subiendo imagen IA:', err.message);
-    }
-
-    // Insert recipe
-    const recetaRes = await sqlQuery(
-      `INSERT INTO recetas (nombre, descripcion, instrucciones, tiempo_preparacion, porciones, autor_id, privacidad, imagen_file_id) VALUES (${esc(recipeData.nombre)}, ${esc(recipeData.descripcion)}, ${esc(recipeData.instrucciones)}, ${recipeData.tiempo_preparacion || 'NULL'}, ${recipeData.porciones || 'NULL'}, ${recitiId}, 'publico', ${imagenFileId})`
-    );
-    const recetaId = recetaRes?.result?.insertId;
-
-
-    // Link ingredients
-    for (const ing of ingredienteIds) {
-      try {
-        await sqlQuery(`INSERT INTO receta_ingredientes (receta_id, ingrediente_id, cantidad, unidad) VALUES (${recetaId}, ${ing.id}, ${esc(ing.cantidad)}, ${esc(ing.unidad)})`);
-      } catch (e) { console.warn('Link error:', e.message); }
-    }
-
-    res.json({
-      success: true,
-      recetaId,
-      receta: { ...recipeData, id: recetaId, autor_id: recitiId },
-      ingredientes: ingredienteIds,
-    });
+    // ✅ Return raw recipe data — frontend saves to DB with user's own token
+    console.log(`[AI] Recipe generated for user ${req.user.id}: "${recipeData.nombre}"`);
+    res.json({ success: true, recipeData });
   } catch (err) {
     console.error('AI generate error:', err);
     res.status(500).json({ error: 'Error generando receta con IA', details: err.message });

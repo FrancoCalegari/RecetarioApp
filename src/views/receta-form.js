@@ -224,6 +224,8 @@ function bindFormEvents() {
         imagen_file_id: imagenFileId,
         privacidad: document.getElementById('recipe-privacidad')?.value || 'privado',
         autor_id: user ? user.id : (editingReceta?.autor_id || null),
+        // If editing an AI-generated recipe, clear the flag
+        ...(editingReceta?.generado_ia ? { generado_ia: 0 } : {}),
       };
 
       let recetaId;
@@ -295,6 +297,18 @@ export async function renderRecetaForm({ id }) {
       <button class="btn btn-ghost btn-sm" onclick="window.history.back()">← Volver</button>
       <h1 class="heading-lg">${isEdit ? 'Editar' : 'Nueva'} Receta</h1>
     </div>
+
+    ${isEdit && r.generado_ia ? `
+      <div class="card mb-md" style="border-color: var(--primary); background: rgba(232,115,74,0.08);">
+        <div class="card-body flex items-center gap-sm">
+          <span style="font-size:1.5rem;">🤖</span>
+          <div>
+            <div class="text-sm" style="font-weight:600;">Receta generada con IA</div>
+            <div class="text-xs text-muted">Al guardar cambios, la etiqueta “Generado con IA” se desactivará automáticamente.</div>
+          </div>
+        </div>
+      </div>
+    ` : ''}
 
     <form id="recipe-form" class="flex flex-col gap-lg">
       <!-- Image -->

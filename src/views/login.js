@@ -7,6 +7,17 @@ import { setSession } from '../lib/auth.js';
 import { showToast } from '../components/toast.js';
 import { navigate } from '../lib/router.js';
 
+async function apiForgotPassword(email) {
+  const res = await fetch('/api/auth/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Error al enviar el correo');
+  return data;
+}
+
 function bindLogin() {
   document.getElementById('login-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -60,27 +71,53 @@ function bindRegister() {
   });
 }
 
+function bindForgotPassword() {
+  document.getElementById('forgot-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-forgot');
+    const email = document.getElementById('forgot-email').value.trim();
+    if (!email) return showToast('Ingresá tu email', 'error');
+
+    btn.disabled = true;
+    btn.textContent = 'Enviando...';
+
+    try {
+      await apiForgotPassword(email);
+      // Always show success to avoid email enumeration
+      document.getElementById('forgot-success')?.classList.remove('hidden');
+      document.getElementById('forgot-form-wrap')?.classList.add('hidden');
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Enviar instrucciones';
+    }
+  });
+}
+
 function bindTabs() {
   document.getElementById('tab-login')?.addEventListener('click', () => showTab('login'));
   document.getElementById('tab-register')?.addEventListener('click', () => showTab('register'));
 }
 
 function showTab(tab) {
-  const loginPanel = document.getElementById('panel-login');
-  const regPanel   = document.getElementById('panel-register');
-  const tabLogin   = document.getElementById('tab-login');
-  const tabReg     = document.getElementById('tab-register');
+  const loginPanel  = document.getElementById('panel-login');
+  const regPanel    = document.getElementById('panel-register');
+  const forgotPanel = document.getElementById('panel-forgot');
+  const tabLogin    = document.getElementById('tab-login');
+  const tabReg      = document.getElementById('tab-register');
+
+  // Hide all panels
+  [loginPanel, regPanel, forgotPanel].forEach((p) => p?.classList.add('hidden'));
+  [tabLogin, tabReg].forEach((t) => t?.classList.remove('auth-tab-active'));
 
   if (tab === 'login') {
-    loginPanel.classList.remove('hidden');
-    regPanel.classList.add('hidden');
-    tabLogin.classList.add('auth-tab-active');
-    tabReg.classList.remove('auth-tab-active');
-  } else {
-    loginPanel.classList.add('hidden');
-    regPanel.classList.remove('hidden');
-    tabLogin.classList.remove('auth-tab-active');
-    tabReg.classList.add('auth-tab-active');
+    loginPanel?.classList.remove('hidden');
+    tabLogin?.classList.add('auth-tab-active');
+  } else if (tab === 'register') {
+    regPanel?.classList.remove('hidden');
+    tabReg?.classList.add('auth-tab-active');
+  } else if (tab === 'forgot') {
+    forgotPanel?.classList.remove('hidden');
   }
 }
 
@@ -89,6 +126,7 @@ export async function renderLogin({ tab = 'login' } = {}) {
     bindTabs();
     bindLogin();
     bindRegister();
+    bindForgotPassword();
     if (tab === 'register') showTab('register');
   }, 50);
 
@@ -122,9 +160,12 @@ export async function renderLogin({ tab = 'login' } = {}) {
             </div>
           </div>
           <button type="submit" class="btn btn-primary w-full" id="btn-login" style="margin-top:8px;">Ingresar</button>
-          <p class="text-sm text-muted" style="text-align:center;">
-            ¿No tenés cuenta? <button type="button" class="link-btn" onclick="document.getElementById('tab-register').click()">Registrate</button>
-          </p>
+          <div class="flex" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+            <p class="text-sm text-muted" style="margin:0;">
+              ¿No tenés cuenta? <button type="button" class="link-btn" onclick="document.getElementById('tab-register').click()">Registrate</button>
+            </p>
+            <button type="button" class="link-btn text-sm" style="color:var(--text-muted);" onclick="window.dispatchEvent(new CustomEvent('show-forgot'))">¿Olvidaste tu contraseña?</button>
+          </div>
         </form>
       </div>
 
@@ -156,9 +197,55 @@ export async function renderLogin({ tab = 'login' } = {}) {
           </p>
         </form>
       </div>
+
+      <!-- Forgot Password Panel -->
+      <div id="panel-forgot" class="hidden">
+        <div id="forgot-form-wrap">
+          <p class="text-sm text-secondary mb-md">
+            Ingresá tu email y te enviaremos un link para restablecer tu contraseña.
+          </p>
+          <form id="forgot-form" class="flex flex-col gap-md">
+            <div class="form-group">
+              <label class="form-label">Email de tu cuenta</label>
+              <input type="email" class="form-input" id="forgot-email" placeholder="franco@email.com" autocomplete="email" />
+            </div>
+            <button type="submit" class="btn btn-primary w-full" id="btn-forgot">Enviar instrucciones</button>
+            <p class="text-sm text-muted" style="text-align:center;">
+              <button type="button" class="link-btn" onclick="window.dispatchEvent(new CustomEvent('show-login'))">Volver al login</button>
+            </p>
+          </form>
+        </div>
+        <!-- Success state -->
+        <div id="forgot-success" class="hidden" style="text-align:center; padding: var(--space-lg) 0;">
+          <div style="font-size:3rem; margin-bottom:var(--space-md);">📧</div>
+          <h2 class="heading-md mb-sm">¡Email enviado!</h2>
+          <p class="text-sm text-secondary mb-md">
+            Si el email está registrado, recibirás un link para restablecer tu contraseña.<br>
+            <span class="text-xs text-muted">Revisá también tu carpeta de spam.</span>
+          </p>
+          <button class="btn btn-ghost w-full" onclick="window.dispatchEvent(new CustomEvent('show-login'))">Volver al login</button>
+        </div>
+      </div>
     </div>
   `;
 }
+
+// Listen for show-forgot / show-login custom events (emitted by inline buttons)
+window.addEventListener('show-forgot', () => {
+  const fp = document.getElementById('panel-forgot');
+  const lp = document.getElementById('panel-login');
+  const rp = document.getElementById('panel-register');
+  [lp, rp].forEach((p) => p?.classList.add('hidden'));
+  fp?.classList.remove('hidden');
+});
+window.addEventListener('show-login', () => {
+  const fp = document.getElementById('panel-forgot');
+  const lp = document.getElementById('panel-login');
+  fp?.classList.add('hidden');
+  lp?.classList.remove('hidden');
+  document.getElementById('tab-login')?.classList.add('auth-tab-active');
+  document.getElementById('tab-register')?.classList.remove('auth-tab-active');
+});
 
 // Global helper for password toggle
 window.togglePass = (inputId, btn) => {

@@ -1,10 +1,13 @@
 /* ═══════════════════════════════════════════════════════════════════
    Receti AI View — Generate recipes with Gemini via the Receti bot
+   The backend only calls Gemini and returns JSON.
+   This view saves the recipe to the DB using the user's own session.
    ═══════════════════════════════════════════════════════════════════ */
 
 import { showToast } from '../components/toast.js';
 import { navigate } from '../lib/router.js';
-import { isLoggedIn } from '../lib/auth.js';
+import { isLoggedIn, getToken, getUser } from '../lib/auth.js';
+import { select, insert, esc } from '../lib/api.js';
 
 const PROMPT_EXAMPLES = [
   '🥩 Milanesas napolitanas para 4 personas',
@@ -80,13 +83,13 @@ function renderGenerating() {
         <div class="receti-step active" id="step-0">🧠 Analizando tu pedido...</div>
         <div class="receti-step" id="step-1">📝 Redactando ingredientes...</div>
         <div class="receti-step" id="step-2">👨‍🍳 Preparando instrucciones...</div>
-        <div class="receti-step" id="step-3">💾 Guardando en la base...</div>
+        <div class="receti-step" id="step-3">💾 Guardando en tu cuenta...</div>
       </div>
     </div>`;
 }
 
 function renderResult(result) {
-  const { receta, ingredientes } = result;
+  const { receta, ingredientes, recetaId } = result;
   const ingsHtml = ingredientes.map((ing) => `
     <div class="ingredient-item">
       <span class="ingredient-item-dot"></span>
@@ -116,14 +119,16 @@ function renderResult(result) {
 
       <!-- Recipe preview -->
       <div class="card-body">
-        <div class="tag tag-accent mb-sm">🤖 Generada por Receti IA</div>
+        <div class="flex gap-sm mb-sm flex-wrap">
+          <div class="tag tag-accent">🤖 Generado con IA</div>
+          <div class="tag">🔒 Privada (solo vos)</div>
+        </div>
         <h2 class="heading-md mb-sm">${receta.nombre}</h2>
         ${receta.descripcion ? `<p class="text-sm text-secondary mb-md">${receta.descripcion}</p>` : ''}
 
         <div class="recipe-meta mb-md">
           ${receta.tiempo_preparacion ? `<div class="recipe-meta-item">⏱️ ${receta.tiempo_preparacion} min</div>` : ''}
           ${receta.porciones ? `<div class="recipe-meta-item">👥 ${receta.porciones} porciones</div>` : ''}
-          <div class="recipe-meta-item">🌍 Pública</div>
         </div>
 
         ${ingredientes.length > 0 ? `
@@ -144,15 +149,78 @@ function renderResult(result) {
         <button class="btn btn-secondary flex-1" id="btn-receti-new">
           ✨ Generar otra
         </button>
-        <button class="btn btn-accent flex-1" id="btn-receti-view" onclick="window.location.hash='/receta/${result.recetaId}'">
+        <button class="btn btn-accent flex-1" id="btn-receti-view" onclick="window.location.hash='/receta/${recetaId}'">
           Ver receta →
         </button>
       </div>
     </div>`;
 }
 
+async function saveRecipeToAccount(recipeData) {
+  const user = getUser();
+  if (!user) throw new Error('No hay sesión activa');
+
+  // 1. Create/reuse ingredients (private, owned by user)
+  const ingredienteIds = [];
+  for (const ing of (recipeData.ingredientes || [])) {
+    try {
+      // Check if user already has this ingredient
+      let existing = await select(
+        `SELECT id FROM ingredientes WHERE nombre = ${esc(ing.nombre)} AND autor_id = ${user.id}`
+      );
+      let ingId;
+      if (existing.length > 0) {
+        ingId = existing[0].id;
+      } else {
+        const r = await insert('ingredientes', {
+          nombre: ing.nombre,
+          categoria: ing.categoria || 'otros',
+          autor_id: user.id,
+          privacidad: 'privado',
+        });
+        ingId = r?.insertId;
+      }
+      if (ingId) ingredienteIds.push({ id: ingId, nombre: ing.nombre, cantidad: ing.cantidad, unidad: ing.unidad });
+    } catch (e) {
+      console.warn('Ingredient save error:', e.message);
+    }
+  }
+
+  // 2. Create recipe with generado_ia = true
+  const recetaRes = await insert('recetas', {
+    nombre: recipeData.nombre,
+    descripcion: recipeData.descripcion || null,
+    instrucciones: recipeData.instrucciones || null,
+    tiempo_preparacion: recipeData.tiempo_preparacion || null,
+    porciones: recipeData.porciones || null,
+    autor_id: user.id,
+    privacidad: 'privado',
+    generado_ia: 1,
+  });
+  const recetaId = recetaRes?.insertId;
+  if (!recetaId) throw new Error('No se pudo crear la receta');
+
+  // 3. Link ingredients to recipe
+  for (const ing of ingredienteIds) {
+    try {
+      await insert('receta_ingredientes', {
+        receta_id: recetaId,
+        ingrediente_id: ing.id,
+        cantidad: ing.cantidad || null,
+        unidad: ing.unidad || null,
+      });
+    } catch (e) { console.warn('Link error:', e.message); }
+  }
+
+  return { recetaId, ingredientes: ingredienteIds };
+}
+
 async function generate(prompt) {
   if (isGenerating) return;
+  if (!isLoggedIn()) {
+    showToast('Iniciá sesión para generar recetas con IA 🔐', 'error');
+    return navigate('/login');
+  }
   if (!prompt?.trim()) return showToast('Escribí qué querés cocinar', 'error');
   if (!aiAvailable) return showToast('Configurá GEMINI_API_KEY en el .env', 'error');
 
@@ -173,24 +241,31 @@ async function generate(prompt) {
   }, 800);
 
   try {
+    // 1. Ask backend for AI-generated recipe data (backend only calls Gemini)
+    const token = getToken();
     const res = await fetch('/api/ai/generate-recipe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
       body: JSON.stringify({ prompt }),
     });
 
     clearInterval(stepTimer);
 
     const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Error desconocido');
 
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || 'Error desconocido');
-    }
+    const recipeData = data.recipeData;
 
-    lastResult = data;
+    // 2. Save recipe to DB using the user's own session (frontend handles DB writes)
+    const { recetaId, ingredientes } = await saveRecipeToAccount(recipeData);
+
+    lastResult = { receta: recipeData, ingredientes, recetaId };
     isGenerating = false;
 
-    if (resultArea) resultArea.innerHTML = renderResult(data);
+    if (resultArea) resultArea.innerHTML = renderResult(lastResult);
 
     setTimeout(() => {
       document.getElementById('btn-receti-new')?.addEventListener('click', () => {
@@ -199,7 +274,7 @@ async function generate(prompt) {
       });
     }, 100);
 
-    showToast(`¡"${data.receta.nombre}" creada! 🍳`, 'success');
+    showToast(`¡"${recipeData.nombre}" guardada en tu cuenta! 🍳`, 'success');
   } catch (err) {
     clearInterval(stepTimer);
     isGenerating = false;
@@ -209,6 +284,34 @@ async function generate(prompt) {
 }
 
 export async function renderReceti() {
+  // Gate: user must be logged in to use the AI
+  if (!isLoggedIn()) {
+    return `
+      <div class="receti-hero">
+        <div class="receti-avatar-hero">
+          ${renderRecitiAvatar(72)}
+          <div class="receti-pulse"></div>
+        </div>
+        <div>
+          <h1 class="heading-lg">Hola, soy <span style="color:var(--primary);">Receti</span> 🤖</h1>
+          <p class="text-sm text-secondary">Tu chef robot con inteligencia artificial.</p>
+        </div>
+      </div>
+      <div class="card" style="border-color:var(--primary); background: rgba(var(--primary-rgb, 232,115,74), 0.08);">
+        <div class="card-body text-center">
+          <div style="font-size:2rem; margin-bottom:var(--space-sm);">🔐</div>
+          <h2 class="heading-md mb-sm">Iniciá sesión para usar Receti</h2>
+          <p class="text-sm text-secondary mb-md">Las recetas generadas por IA se guardan en tu cuenta de forma privada.</p>
+          <button class="btn btn-primary w-full" onclick="window.location.hash='/login'">
+            Ingresar a mi cuenta
+          </button>
+          <button class="btn btn-ghost w-full mt-sm" onclick="window.location.hash='/register'">
+            Crear cuenta gratis
+          </button>
+        </div>
+      </div>`;
+  }
+
   const status = await checkAIStatus();
 
   const bannerHtml = !status.available
@@ -302,7 +405,8 @@ export async function renderReceti() {
     <!-- Info footer -->
     <div class="receti-footer">
       <p class="text-xs text-muted text-center">
-        🤖 Las recetas generadas por Receti son públicas y aparecen en la comunidad.<br>
+        🔒 Las recetas se guardan de forma <strong>privada</strong> en tu cuenta.<br>
+        Podés publicarlas en la comunidad desde el detalle de la receta.<br>
         Powered by <strong>Gemini 2.0 Flash</strong> · Google AI
       </p>
     </div>

@@ -120,6 +120,10 @@ export async function renderRecetaDetalle({ id }) {
     ? '<span class="tag tag-primary">🔗 No listada</span>'
     : '<span class="tag">🔒 Privada</span>';
 
+  const aiaBadge = receta.generado_ia
+    ? '<span class="tag tag-accent" style="background:linear-gradient(135deg,rgba(232,115,74,0.2),rgba(76,175,125,0.2)); border-color:rgba(232,115,74,0.4); color:var(--primary);">🤖 Generado con IA</span>'
+    : '';
+
   // Bind events after render
   setTimeout(() => {
     // Rating
@@ -233,9 +237,10 @@ export async function renderRecetaDetalle({ id }) {
         </div>` : ''}
     </div>
 
-    <!-- Privacy + Author -->
+    <!-- Privacy + Author + AI badge -->
     <div class="flex items-center gap-sm mb-md flex-wrap">
       ${privBadge}
+      ${aiaBadge}
       ${renderAuthorSection(receta)}
     </div>
 

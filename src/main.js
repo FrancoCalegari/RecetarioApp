@@ -22,6 +22,7 @@ import { renderPerfil } from './views/perfil.js';
 import { renderComunidadRecetas } from './views/comunidad-recetas.js';
 import { renderComunidadIngredientes } from './views/comunidad-ingredientes.js';
 import { renderReceti } from './views/receti.js';
+import { renderResetPassword } from './views/reset-password.js';
 
 // ─── Auth guard ──────────────────────────────────────────────────────
 function guarded(fn) {
@@ -48,6 +49,7 @@ route('/perfil', guarded(() => renderPerfil()));
 route('/comunidad', () => renderComunidadRecetas());
 route('/comunidad/ingredientes', () => renderComunidadIngredientes());
 route('/receti', () => renderReceti());
+route('/reset-password', () => renderResetPassword());
 
 // ─── Navbar updater ──────────────────────────────────────────────────
 function refreshNavbar() {
