@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#E8734A"/>
+      <stop offset="100%" style="stop-color:#D4532A"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4CAF7D"/>
+      <stop offset="100%" style="stop-color:#2E8B57"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- Chef hat -->
+  <ellipse cx="256" cy="175" rx="85" ry="70" fill="white" opacity="0.95"/>
+  <ellipse cx="190" cy="165" rx="42" ry="48" fill="white" opacity="0.95"/>
+  <ellipse cx="322" cy="165" rx="42" ry="48" fill="white" opacity="0.95"/>
+  <rect x="185" y="195" width="142" height="55" rx="4" fill="white" opacity="0.95"/>
+  <!-- Pot -->
+  <rect x="165" y="260" width="182" height="120" rx="20" fill="url(#accent)"/>
+  <rect x="145" y="250" width="222" height="22" rx="11" fill="#3A9D6A"/>
+  <!-- Steam lines -->
+  <path d="M220 235 Q225 215 220 195" stroke="white" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <path d="M256 230 Q261 210 256 190" stroke="white" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <path d="M292 235 Q297 215 292 195" stroke="white" stroke-width="6" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <!-- Pot handles -->
+  <rect x="135" y="295" width="30" height="14" rx="7" fill="#3A9D6A"/>
+  <rect x="347" y="295" width="30" height="14" rx="7" fill="#3A9D6A"/>
+  <!-- Calendar icon small -->
+  <rect x="320" y="350" width="65" height="55" rx="10" fill="white" opacity="0.9"/>
+  <rect x="320" y="350" width="65" height="18" rx="10" fill="#E8734A" opacity="0.9"/>
+  <circle cx="337" cy="382" r="4" fill="#E8734A"/>
+  <circle cx="352" cy="382" r="4" fill="#4CAF7D"/>
+  <circle cx="367" cy="382" r="4" fill="#E8734A"/>
+  <circle cx="337" cy="396" r="4" fill="#4CAF7D"/>
+  <circle cx="352" cy="396" r="4" fill="#E8734A"/>
+  <circle cx="367" cy="396" r="4" fill="#4CAF7D"/>
+</svg>

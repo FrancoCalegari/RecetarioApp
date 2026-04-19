@@ -1,0 +1,25 @@
+{
+  "name": "recetario-app",
+  "version": "1.0.0",
+  "description": "PWA de recetario y planificador semanal de comidas",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"nodemon server.js\" \"vite --host\"",
+    "build": "vite build",
+    "start": "NODE_ENV=production node server.js",
+    "preview": "vite build && node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.1.4",
+    "vite": "^5.4.6"
+  }
+}
