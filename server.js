@@ -587,7 +587,12 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// ─── Start Server ────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`🍳 Recetario server running on http://localhost:${PORT}`);
-});
+// ─── Start Server (local only — Vercel handles this in serverless) ────
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🍳 Recetario server running on http://localhost:${PORT}`);
+  });
+}
+
+// ─── Export for Vercel serverless ─────────────────────────────────────
+export default app;
