@@ -579,15 +579,17 @@ app.get('/api/ai/status', (_req, res) => {
 });
 
 
-// ─── Serve static files in production ────────────────────────────────
-if (process.env.NODE_ENV === 'production') {
+// ─── Serve static files in production (local only) ───────────────────
+// On Vercel, static files are served by the CDN from dist/ directly.
+// Express only handles /api/* in serverless context.
+if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
   app.use(express.static(join(__dirname, 'dist')));
   app.get('*', (_req, res) => {
     res.sendFile(join(__dirname, 'dist', 'index.html'));
   });
 }
 
-// ─── Start Server (local only — Vercel handles this in serverless) ────
+// ─── Start Server (local only) ────────────────────────────────────────
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`🍳 Recetario server running on http://localhost:${PORT}`);
