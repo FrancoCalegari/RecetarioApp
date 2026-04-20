@@ -65,6 +65,19 @@ export async function authFetch(url, opts = {}) {
   return res;
 }
 
+// ─── Safe JSON helper (re-exported for views that do authFetch + json) ───
+export async function safeJson(res) {
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    const text = await res.text();
+    if (text.trim().startsWith('<') || text.includes('DOCTYPE')) {
+      throw new Error('El servidor no está disponible en este momento.');
+    }
+    throw new Error(text.substring(0, 120) || `Error ${res.status}`);
+  }
+  return res.json();
+}
+
 // ─── Avatar URL helper ────────────────────────────────────────────
 export function getAvatarUrl(avatarFileId, username = '?') {
   if (avatarFileId) return `/api/storage/files/${avatarFileId}`;

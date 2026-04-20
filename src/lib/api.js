@@ -4,6 +4,20 @@
 
 import { getToken, authFetch } from './auth.js';
 
+// ─── Safe JSON parse — detects HTML error pages (e.g. Vercel 404) ────
+async function safeJson(res) {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await res.text();
+    // If it's an HTML page (Vercel error, nginx, etc.) give a clear message
+    if (text.trim().startsWith('<') || text.includes('DOCTYPE')) {
+      throw new Error('El servidor no está disponible. Verificá la conexión.');
+    }
+    throw new Error(text.substring(0, 120));
+  }
+  return res.json();
+}
+
 // ─── SQL Proxy ───────────────────────────────────────────────────────
 export async function query(sql) {
   const res = await fetch('/api/query', {
@@ -11,8 +25,11 @@ export async function query(sql) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: sql }),
   });
-  if (!res.ok) throw new Error(`Query failed: ${res.statusText}`);
-  const data = await res.json();
+  if (!res.ok) {
+    const data = await safeJson(res).catch((e) => ({ error: e.message }));
+    throw new Error(data.error || `Query failed: ${res.status}`);
+  }
+  const data = await safeJson(res);
   if (data.error) throw new Error(data.error);
   return data;
 }
@@ -86,7 +103,7 @@ export async function apiRegister({ username, email, password }) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, email, password }),
   });
-  const data = await res.json();
+  const data = await safeJson(res);
   if (!res.ok) throw new Error(data.error || 'Error al registrar');
   return data;
 }
@@ -97,7 +114,7 @@ export async function apiLogin({ username, password }) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   });
-  const data = await res.json();
+  const data = await safeJson(res);
   if (!res.ok) throw new Error(data.error || 'Error al iniciar sesión');
   return data;
 }
