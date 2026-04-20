@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   Meal Slot Component — Used in the weekly planner
+   Meal Section Component — Supports MULTIPLE recipes per time slot
    ═══════════════════════════════════════════════════════════════════ */
 
 export const MOMENTOS = [
@@ -11,44 +11,48 @@ export const MOMENTOS = [
 ];
 
 /**
- * Render a meal slot
- * @param {Object} opts
- * @param {string} opts.momento - Moment key (desayuno, almuerzo, etc.)
- * @param {string} opts.fecha - Date string YYYY-MM-DD
- * @param {Object|null} opts.plan - Plan data if assigned
- * @param {Object|null} opts.receta - Recipe data if assigned
+ * Render a meal section with MULTIPLE recipes per slot
+ * @param {string} fecha - Date string YYYY-MM-DD
+ * @param {string} momento - Moment key
+ * @param {Array} plans - All plans for this fecha+momento
  */
-export function renderMealSlot({ momento, fecha, plan, receta }) {
+export function renderMealSection(fecha, momento, plans = []) {
   const config = MOMENTOS.find((m) => m.key === momento);
   if (!config) return '';
 
-  const filled = plan && (receta || plan.nota);
-  const display = receta ? receta.nombre : plan?.nota || '';
+  const hasPlans = plans.length > 0;
+
+  const planItems = plans.map((plan) => {
+    const display = plan.receta_nombre || plan.nota || '—';
+    return `
+      <div class="meal-item" id="meal-item-${plan.id}">
+        <span class="meal-item-dot" style="background:${config.color};"></span>
+        <span class="meal-item-name">${display}</span>
+        <button class="meal-item-remove" 
+          onclick="event.stopPropagation(); window.dispatchEvent(new CustomEvent('meal-slot-remove', { detail: { planId: ${plan.id} } }))"
+          title="Quitar">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>`;
+  }).join('');
 
   return `
-    <div class="meal-slot ${filled ? 'filled' : ''}" 
-         onclick="window.dispatchEvent(new CustomEvent('meal-slot-click', { detail: { momento: '${momento}', fecha: '${fecha}', planId: ${plan?.id || 'null'} }}))"
-         id="slot-${fecha}-${momento}">
-      <div class="meal-slot-icon" style="background: ${config.color}20; color: ${config.color};">
-        ${config.icon}
-      </div>
-      <div class="meal-slot-content">
-        <div class="meal-slot-label">${config.label}</div>
-        ${filled
-          ? `<div class="meal-slot-value">${display}</div>`
-          : `<div class="meal-slot-empty">Toca para agregar</div>`
-        }
-      </div>
-      ${filled ? `
-        <div class="meal-slot-actions">
-          <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); window.dispatchEvent(new CustomEvent('meal-slot-remove', { detail: { planId: ${plan.id} } }))" title="Quitar">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+    <div class="meal-section ${hasPlans ? 'has-plans' : ''}" id="slot-${fecha}-${momento}">
+      <div class="meal-section-header"
+           onclick="window.dispatchEvent(new CustomEvent('meal-slot-click', { detail: { momento: '${momento}', fecha: '${fecha}' } }))">
+        <div class="meal-section-icon" style="background:${config.color}20; color:${config.color};">
+          ${config.icon}
         </div>
-      ` : ''}
-    </div>
-  `;
+        <span class="meal-section-label">${config.label}</span>
+        <button class="meal-section-add" title="Agregar receta"
+          onclick="event.stopPropagation(); window.dispatchEvent(new CustomEvent('meal-slot-click', { detail: { momento: '${momento}', fecha: '${fecha}' } }))">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
+      ${hasPlans ? `<div class="meal-items-list">${planItems}</div>` : ''}
+    </div>`;
 }
-
-// renderExtrasSection removed — Picaditas slot (🍿) handles snacks/extras natively
-
