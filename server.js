@@ -393,6 +393,8 @@ app.post('/api/db/migrate', async (_req, res) => {
     `ALTER TABLE ingredientes ADD COLUMN foto_file_id INT`,
     `ALTER TABLE ingredientes ADD COLUMN autor_id INT`,
     `ALTER TABLE ingredientes ADD COLUMN privacidad VARCHAR(20) DEFAULT 'privado'`,
+    // Add usuario_id to planificacion_semanal (each user has their own planner)
+    `ALTER TABLE planificacion_semanal ADD COLUMN usuario_id INT`,
   ];
 
   const results = [];
