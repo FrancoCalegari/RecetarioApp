@@ -3,15 +3,15 @@
    v2 — Versioned cache + update notifications + Background Sync
    ═══════════════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `recetario-${CACHE_VERSION}`;
 
-// Assets to pre-cache (app shell)
+// Assets to pre-cache (app shell) — only things that never change
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/icons/icon.svg',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
 ];
 
 // ─── Install ──────────────────────────────────────────────────────────
@@ -68,20 +68,27 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App shell — cache first, then network
-  if (STATIC_ASSETS.some((path) => url.pathname === path) || url.pathname === '/') {
+  // '/' and index.html — always network-first so mobile always gets
+  // the latest HTML with correct hashed bundle references
+  if (url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(networkFirst(request, true));
+    return;
+  }
+
+  // App shell static assets (icons, manifest) — cache first
+  if (STATIC_ASSETS.some((path) => url.pathname === path)) {
     event.respondWith(cacheFirst(request));
     return;
   }
 
-  // JS/CSS assets — stale while revalidate
+  // JS/CSS assets (hashed names = immutable) — cache first
   if (url.pathname.startsWith('/assets/')) {
-    event.respondWith(staleWhileRevalidate(request));
+    event.respondWith(cacheFirst(request));
     return;
   }
 
   // Everything else — network first
-  event.respondWith(networkFirst(request));
+  event.respondWith(networkFirst(request, false));
 });
 
 // ─── Cache strategies ─────────────────────────────────────────────────
@@ -112,17 +119,23 @@ async function staleWhileRevalidate(request) {
   return cached || fetchPromise;
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, cacheOnSuccess = true) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    if (response.ok && cacheOnSuccess) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }
     return response;
   } catch {
     const cached = await caches.match(request);
-    return cached || caches.match('/');
+    if (cached) return cached;
+    // SPA fallback: return cached '/' for navigation requests
+    const fallback = await caches.match('/');
+    return fallback || new Response('Offline - por favor reconectá y recargá', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain' },
+    });
   }
 }
 

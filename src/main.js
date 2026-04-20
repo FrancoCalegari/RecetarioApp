@@ -157,38 +157,60 @@ function setupOfflineCallbacks() {
 }
 
 // ─── Initialize App ──────────────────────────────────────────────────
+let _initialized = false;
+
 async function init() {
+  // Guard: prevent double-init (happens on mobile when SW serves cached page
+  // and DOMContentLoaded fires after readyState check both trigger init)
+  if (_initialized) return;
+  _initialized = true;
+
   const app = document.getElementById('app');
   if (!app) return;
 
-  app.innerHTML = `
-    <div id="offline-status-bar" class="offline-status-bar" style="display:none;"></div>
-    <main id="router-outlet"></main>
-    ${renderNavbar()}
-  `;
+  try {
+    app.innerHTML = `
+      <div id="offline-status-bar" class="offline-status-bar" style="display:none;"></div>
+      <main id="router-outlet"></main>
+      ${renderNavbar()}
+    `;
+  } catch (e) {
+    // Fallback: just clear the loading screen
+    app.innerHTML = '<main id="router-outlet"></main>';
+    console.warn('Navbar render error:', e);
+  }
 
   const outlet = document.getElementById('router-outlet');
   initRouter(outlet);
 
   window.addEventListener('hashchange', refreshNavbar);
 
-  // Init IndexedDB first (needed for offline + queue)
-  await initIDB();
+  // Init IndexedDB (needed for offline + queue)
+  try {
+    await initIDB();
+  } catch (e) {
+    console.warn('IndexedDB init failed:', e.message);
+  }
 
   // Start offline sync watcher
   initOfflineSync();
   setupOfflineCallbacks();
 
-  // Register SW
-  await registerSW();
+  // Register SW (non-blocking — don't let SW failure block the app)
+  registerSW().catch((e) => console.warn('SW registration failed:', e));
 
   // Init + migrate DB in background (non-blocking)
   initDB()
     .then(() => migrateDB())
-    .then(() => console.log('✅ DB ready'))
+    .then(() => console.log('\u2705 DB ready'))
     .catch((e) => console.warn('DB setup skipped:', e.message));
 }
 
 // ─── Boot ────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', init);
-if (document.readyState !== 'loading') init();
+// Use a single entrypoint to avoid double-init on mobile browsers
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init, { once: true });
+} else {
+  // DOM already ready (e.g. SW served from cache, parsing was instant)
+  init();
+}
