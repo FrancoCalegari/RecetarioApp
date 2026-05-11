@@ -25,7 +25,32 @@ const {
   EMAIL_USER,
   EMAIL_PASS,
   PORT = 3000,
+  CHAT_SERVER_IP,
+  CHAT_SERVER_USER,
+  CHAT_SERVER_PASSWORD,
 } = process.env;
+
+// ─── Chat Server Helper ───────────────────────────────────────────────
+function getChatBaseUrl() {
+  if (!CHAT_SERVER_IP) return null;
+  const ip = CHAT_SERVER_IP.includes(':') ? CHAT_SERVER_IP : `${CHAT_SERVER_IP}:80`;
+  return `http://${ip}/api`;
+}
+
+async function chatFetch(path, options = {}) {
+  const base = getChatBaseUrl();
+  if (!base) throw new Error('CHAT_SERVER_IP no está configurado en el .env');
+  const url = `${base}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Chat-Secret': CHAT_SERVER_PASSWORD || '',
+      ...(options.headers || {}),
+    },
+  });
+  return res;
+}
 
 // ─── Email Transporter (Nodemailer + Gmail) ───────────────────────
 const emailTransporter = (EMAIL_USER && EMAIL_PASS)
@@ -581,7 +606,160 @@ app.get('/api/ai/status', (_req, res) => {
 });
 
 
-// ─── Serve static files in production (local only) ───────────────────
+// ═══════════════════════════════════════════════════════════════════════
+// ─── CHAT: Proxy hacia servidor PHP ─────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+
+// Helper: construir headers con el user_id del token JWT
+function chatHeaders(userId) {
+  return { 'X-User-Id': String(userId) };
+}
+
+// ─── CHAT: Health Check ───────────────────────────────────────────────
+app.get('/api/chat/health', async (_req, res) => {
+  try {
+    const r = await chatFetch('/health');
+    res.status(r.status).json(await r.json());
+  } catch (err) {
+    res.status(503).json({ error: 'Servidor de chat no disponible', details: err.message });
+  }
+});
+
+// ─── CHAT: Config Status ──────────────────────────────────────────────
+app.get('/api/chat/status', (_req, res) => {
+  res.json({
+    configured: !!(CHAT_SERVER_IP && CHAT_SERVER_PASSWORD),
+    server: CHAT_SERVER_USER || null,
+    ip: CHAT_SERVER_IP || null,
+  });
+});
+
+// ─── CHAT: Conversaciones — Listar ────────────────────────────────────
+app.get('/api/chat/conversations', authenticateToken, async (req, res) => {
+  try {
+    const r = await chatFetch('/conversations', {
+      headers: chatHeaders(req.user.id),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Error conectando al servidor de chat', details: err.message });
+  }
+});
+
+// ─── CHAT: Conversaciones — Crear/Obtener ─────────────────────────────
+app.post('/api/chat/conversations', authenticateToken, async (req, res) => {
+  try {
+    const r = await chatFetch('/conversations', {
+      method: 'POST',
+      headers: chatHeaders(req.user.id),
+      body: JSON.stringify(req.body),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Error creando conversación', details: err.message });
+  }
+});
+
+// ─── CHAT: Conversaciones — Detalle ──────────────────────────────────
+app.get('/api/chat/conversations/:id', authenticateToken, async (req, res) => {
+  try {
+    const r = await chatFetch(`/conversations/${req.params.id}`, {
+      headers: chatHeaders(req.user.id),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Error obteniendo conversación', details: err.message });
+  }
+});
+
+// ─── CHAT: Mensajes — Obtener (con long-polling opcional) ────────────
+app.get('/api/chat/messages', authenticateToken, async (req, res) => {
+  try {
+    const qs = new URLSearchParams(req.query).toString();
+    const r = await chatFetch(`/messages?${qs}`, {
+      headers: chatHeaders(req.user.id),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Error obteniendo mensajes', details: err.message });
+  }
+});
+
+// ─── CHAT: Mensajes — Enviar ──────────────────────────────────────────
+app.post('/api/chat/messages', authenticateToken, async (req, res) => {
+  try {
+    const r = await chatFetch('/messages', {
+      method: 'POST',
+      headers: chatHeaders(req.user.id),
+      body: JSON.stringify(req.body),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Error enviando mensaje', details: err.message });
+  }
+});
+
+// ─── CHAT: Mensajes — Marcar como leídos ─────────────────────────────
+app.put('/api/chat/messages/read', authenticateToken, async (req, res) => {
+  try {
+    const qs = new URLSearchParams(req.query).toString();
+    const r = await chatFetch(`/messages/read?${qs}`, {
+      method: 'PUT',
+      headers: chatHeaders(req.user.id),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Error marcando mensajes', details: err.message });
+  }
+});
+
+// ─── CHAT: Usuarios — Lista disponibles ──────────────────────────────
+app.get('/api/chat/users', authenticateToken, async (req, res) => {
+  try {
+    // Asegurar que siempre se excluya al usuario actual
+    const params = new URLSearchParams({
+      ...req.query,
+      exclude_id: req.user.id,
+    });
+    const r = await chatFetch(`/users?${params.toString()}`, {
+      headers: chatHeaders(req.user.id),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Error obteniendo usuarios', details: err.message });
+  }
+});
+
+// ─── CHAT: Sincronizar usuarios de RecetarioApp → PHP ─────────────────
+// Node.js envía la lista de usuarios al servidor PHP para que tenga
+// los usernames y avatares disponibles en el chat.
+app.post('/api/chat/users/sync', authenticateToken, async (req, res) => {
+  try {
+    // Obtener todos los usuarios de RecetarioApp
+    const users = await sqlSelect(
+      `SELECT id, username, avatar_file_id FROM usuarios ORDER BY id ASC`
+    );
+
+    const r = await chatFetch('/users/sync', {
+      method: 'POST',
+      headers: chatHeaders(req.user.id),
+      body: JSON.stringify({ users }),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Error sincronizando usuarios', details: err.message });
+  }
+});
+
+
 // On Vercel, static files are served by the CDN from dist/ directly.
 // Express only handles /api/* in serverless context.
 if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {

@@ -27,6 +27,12 @@ const NAV_ITEMS = [
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
   },
   {
+    route: '/chat',
+    label: 'Chat',
+    isChat: true,
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  },
+  {
     route: '/perfil',
     label: 'Perfil',
     isProfile: true,
@@ -48,7 +54,7 @@ function renderProfileIcon() {
 export function renderNavbar() {
   const currentHash = window.location.hash || '#/';
 
-  const items = NAV_ITEMS.map(({ route, label, icon, isProfile, isReceti }) => {
+  const items = NAV_ITEMS.map(({ route, label, icon, isProfile, isReceti, isChat }) => {
     const isActive = currentHash === `#${route}` ||
       (route !== '/' && currentHash.startsWith(`#${route}`));
 
@@ -63,16 +69,20 @@ export function renderNavbar() {
       ? `<span class="receti-nav-glow"></span>`
       : '';
 
+    const chatBadge = isChat
+      ? `<span id="chat-nav-badge" class="chat-nav-badge" style="display:none;"></span>`
+      : '';
+
     return `
       <button class="nav-item ${isActive ? 'active' : ''} ${isReceti ? 'nav-item-receti' : ''}"
               data-route="${route}"
               onclick="window.location.hash='${finalRoute}'"
               id="nav-${label.toLowerCase().replace(/\s+/g, '-')}"
-              style="${extraStyle}">
+              style="${extraStyle}position:relative;">
         ${recitiGlow}
         ${iconHtml}
+        ${chatBadge}
         <span>${isProfile && isLoggedIn() ? getUser().username.split(' ')[0] : label}</span>
-        ${isReceti ? '' : ''}
       </button>
     `;
   }).join('');
@@ -82,4 +92,23 @@ export function renderNavbar() {
       ${items}
       <div id="offline-queue-badge" class="offline-queue-badge" style="display:none;">0</div>
     </nav>`;
+}
+
+// ─── Actualizar badge de chat no leídos ──────────────────────────────
+export async function refreshChatBadge() {
+  try {
+    const r = await fetch('/api/chat/conversations', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('recetario_token')}` },
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    const total = (data.conversations || []).reduce(
+      (sum, c) => sum + (parseInt(c.unread_count) || 0), 0
+    );
+    const badge = document.getElementById('chat-nav-badge');
+    if (badge) {
+      badge.textContent = total > 9 ? '9+' : String(total);
+      badge.style.display = total > 0 ? 'flex' : 'none';
+    }
+  } catch { /* silencioso */ }
 }

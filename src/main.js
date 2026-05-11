@@ -5,6 +5,7 @@
 import { route, initRouter, navigate } from './lib/router.js';
 import { initDB, migrateDB } from './lib/api.js';
 import { renderNavbar } from './components/navbar.js';
+import { refreshChatBadge } from './components/navbar.js';
 import { isLoggedIn } from './lib/auth.js';
 import { initIDB } from './lib/idb.js';
 import { initOfflineSync, updateQueueBadge, processQueue } from './lib/offline-queue.js';
@@ -23,6 +24,7 @@ import { renderComunidadRecetas } from './views/comunidad-recetas.js';
 import { renderComunidadIngredientes } from './views/comunidad-ingredientes.js';
 import { renderReceti } from './views/receti.js';
 import { renderResetPassword } from './views/reset-password.js';
+import { renderChat } from './views/chat.js';
 
 // ─── Auth guard ──────────────────────────────────────────────────────
 function guarded(fn) {
@@ -50,6 +52,8 @@ route('/comunidad', () => renderComunidadRecetas());
 route('/comunidad/ingredientes', () => renderComunidadIngredientes());
 route('/receti', () => renderReceti());
 route('/reset-password', () => renderResetPassword());
+route('/chat', guarded(() => renderChat()));
+route('/chat/:userId', guarded((p) => renderChat(p)));
 
 // ─── Navbar updater ──────────────────────────────────────────────────
 function refreshNavbar() {
@@ -204,6 +208,12 @@ async function init() {
     .then(() => migrateDB())
     .then(() => console.log('\u2705 DB ready'))
     .catch((e) => console.warn('DB setup skipped:', e.message));
+
+  // Chat badge polling — each 30s if logged in
+  if (isLoggedIn()) {
+    refreshChatBadge();
+    setInterval(() => { if (isLoggedIn()) refreshChatBadge(); }, 30_000);
+  }
 }
 
 // ─── Boot ────────────────────────────────────────────────────────────

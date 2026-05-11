@@ -3,7 +3,7 @@
    v2 — Versioned cache + update notifications + Background Sync
    ═══════════════════════════════════════════════════════════════════ */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `recetario-${CACHE_VERSION}`;
 
 // Assets to pre-cache (app shell) — only things that never change
