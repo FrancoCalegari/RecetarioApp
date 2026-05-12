@@ -103,7 +103,7 @@ function renderBubble(msg, myId) {
     ? `<span style="font-size:10px;opacity:0.7;margin-left:4px;">✓✓</span>` : '';
 
   return `
-    <div style="display:flex;justify-content:${align};margin-bottom:8px;">
+    <div id="chat-msg-${msg.id}" style="display:flex;justify-content:${align};margin-bottom:8px;">
       <div style="max-width:72%;background:${bg};color:${color};
         padding:10px 14px;border-radius:${mine ? '18px 4px 18px 18px' : '4px 18px 18px 18px'};
         font-size:0.9rem;line-height:1.45;word-break:break-word;
@@ -121,6 +121,7 @@ function appendMessages(msgs) {
   if (!area) return;
   const me = getUser();
   msgs.forEach(m => {
+    if (document.getElementById(`chat-msg-${m.id}`)) return;
     const div = document.createElement('div');
     div.innerHTML = renderBubble(m, me.id);
     area.appendChild(div.firstElementChild);

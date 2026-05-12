@@ -46,16 +46,20 @@ if ($method === 'GET') {
         // Timeout — devolver vacío
         jsonResponse(['success' => true, 'messages' => []]);
     } else {
-        // ── Carga normal: últimos 50 mensajes ────────────────────────
-        $stmt = $db->prepare("
-            SELECT id, conversation_id, sender_id, content, read_at, created_at
-            FROM chat_messages
-            WHERE conversation_id = ?
-            ORDER BY created_at ASC
-            LIMIT 50
-        ");
-        $stmt->execute([$convId]);
-        $msgs = $stmt->fetchAll();
+        // ── Carga normal o short-polling ──────────────────────────────
+        if ($since) {
+            $msgs = fetchNewMessages($db, $convId, $since);
+        } else {
+            $stmt = $db->prepare("
+                SELECT id, conversation_id, sender_id, content, read_at, created_at
+                FROM chat_messages
+                WHERE conversation_id = ?
+                ORDER BY created_at ASC
+                LIMIT 50
+            ");
+            $stmt->execute([$convId]);
+            $msgs = $stmt->fetchAll();
+        }
         markAsRead($db, $convId, $userId);
         jsonResponse(['success' => true, 'messages' => $msgs]);
     }
@@ -69,7 +73,7 @@ if ($method === 'POST') {
 
     if ($convId <= 0)     jsonResponse(['error' => 'conversation_id requerido'], 400);
     if ($content === '')  jsonResponse(['error' => 'El mensaje no puede estar vacío'], 400);
-    if (mb_strlen($content) > 2000) jsonResponse(['error' => 'Mensaje demasiado largo (máx 2000 chars)'], 400);
+    if (strlen($content) > 2000) jsonResponse(['error' => 'Mensaje demasiado largo (máx 2000 chars)'], 400);
 
     // Verificar que el usuario pertenece a la conversación
     $stmt = $db->prepare(

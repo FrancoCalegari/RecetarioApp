@@ -1,0 +1,61 @@
+[Mon May 11 20:54:35 2026] PHP 8.4.11 Development Server (http://0.0.0.0:8000) started
+[Mon May 11 20:54:46 2026] 127.0.0.1:38254 Accepted
+[Mon May 11 20:54:46 2026] 127.0.0.1:38254 Closing
+[Mon May 11 20:54:52 2026] 127.0.0.1:60508 Accepted
+[Mon May 11 20:54:52 2026] 127.0.0.1:60508 Closing
+[Mon May 11 20:55:17 2026] 127.0.0.1:42912 Accepted
+[Mon May 11 20:55:17 2026] 127.0.0.1:42912 Closing
+[Mon May 11 20:55:22 2026] 127.0.0.1:42916 Accepted
+[Mon May 11 20:55:22 2026] 127.0.0.1:42916 Closing
+[Mon May 11 20:55:52 2026] 127.0.0.1:37540 Accepted
+[Mon May 11 20:55:52 2026] 127.0.0.1:37540 Closing
+[Mon May 11 20:56:22 2026] 127.0.0.1:45706 Accepted
+[Mon May 11 20:56:22 2026] 127.0.0.1:45706 Closing
+[Mon May 11 20:56:52 2026] 127.0.0.1:56260 Accepted
+[Mon May 11 20:56:52 2026] 127.0.0.1:56260 Closing
+[Mon May 11 20:57:22 2026] 127.0.0.1:37156 Accepted
+[Mon May 11 20:57:22 2026] 127.0.0.1:37156 Closing
+[Mon May 11 20:57:25 2026] 127.0.0.1:37158 Accepted
+[Mon May 11 20:57:25 2026] 127.0.0.1:37158 Closing
+[Mon May 11 20:57:25 2026] 127.0.0.1:37166 Accepted
+[Mon May 11 20:57:25 2026] 127.0.0.1:37166 Closing
+[Mon May 11 20:57:25 2026] 127.0.0.1:37168 Accepted
+[Mon May 11 20:57:25 2026] 127.0.0.1:37168 Closing
+[Mon May 11 20:57:28 2026] 127.0.0.1:60026 Accepted
+[Mon May 11 20:57:28 2026] 127.0.0.1:60026 Closing
+[Mon May 11 20:57:30 2026] 127.0.0.1:60030 Accepted
+[Mon May 11 20:57:30 2026] 127.0.0.1:60030 Closing
+[Mon May 11 20:57:30 2026] 127.0.0.1:60042 Accepted
+[Mon May 11 20:57:30 2026] 127.0.0.1:60042 Closing
+[Mon May 11 20:57:30 2026] 127.0.0.1:60046 Accepted
+[Mon May 11 20:57:30 2026] 127.0.0.1:60046 Closing
+[Mon May 11 20:57:30 2026] 127.0.0.1:60054 Accepted
+[Mon May 11 20:57:30 2026] 127.0.0.1:60054 Closing
+[Mon May 11 20:57:30 2026] 127.0.0.1:60058 Accepted
+[Mon May 11 20:57:30 2026] 127.0.0.1:60058 Closing
+[Mon May 11 20:57:33 2026] 127.0.0.1:60062 Accepted
+[Mon May 11 20:57:33 2026] 127.0.0.1:60062 Closing
+[Mon May 11 20:57:38 2026] 127.0.0.1:33398 Accepted
+[Mon May 11 20:57:38 2026] PHP Fatal error:  Uncaught Error: Call to undefined function mb_strlen() in /home/gowther/Documentos/proyectos/RecetarioApp/phpserver/api/messages.php:72
+Stack trace:
+#0 /home/gowther/Documentos/proyectos/RecetarioApp/phpserver/index.php(32): require()
+#1 /home/gowther/Documentos/proyectos/RecetarioApp/phpserver/router.php(6): include_once('...')
+#2 {main}
+  thrown in /home/gowther/Documentos/proyectos/RecetarioApp/phpserver/api/messages.php on line 72
+[Mon May 11 20:57:38 2026] 127.0.0.1:33398 Closing
+[Mon May 11 20:57:42 2026] 127.0.0.1:33408 Accepted
+[Mon May 11 20:57:42 2026] 127.0.0.1:33408 Closing
+[Mon May 11 20:57:42 2026] 127.0.0.1:33418 Accepted
+[Mon May 11 20:57:42 2026] 127.0.0.1:33418 Closing
+[Mon May 11 20:57:42 2026] 127.0.0.1:33428 Accepted
+[Mon May 11 20:57:42 2026] 127.0.0.1:33428 Closing
+[Mon May 11 20:57:43 2026] 127.0.0.1:33432 Accepted
+[Mon May 11 20:57:43 2026] 127.0.0.1:33432 Closing
+[Mon May 11 20:57:47 2026] 127.0.0.1:60452 Accepted
+[Mon May 11 20:57:47 2026] PHP Fatal error:  Uncaught Error: Call to undefined function mb_strlen() in /home/gowther/Documentos/proyectos/RecetarioApp/phpserver/api/messages.php:72
+Stack trace:
+#0 /home/gowther/Documentos/proyectos/RecetarioApp/phpserver/index.php(32): require()
+#1 /home/gowther/Documentos/proyectos/RecetarioApp/phpserver/router.php(6): include_once('...')
+#2 {main}
+  thrown in /home/gowther/Documentos/proyectos/RecetarioApp/phpserver/api/messages.php on line 72
+[Mon May 11 20:57:47 2026] 127.0.0.1:60452 Closing
